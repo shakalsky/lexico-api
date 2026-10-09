@@ -1,0 +1,222 @@
+{
+  "deck_id": "es-en-core",
+  "language": "Español",
+  "words": [
+    {
+      "id": "es-atardecer",
+      "question_short": "el atardecer",
+      "answer_short": "sunset",
+      "part_of_speech": "noun · masculine",
+      "cefr_level": "A2",
+      "question_example": "Caminamos por la playa al atardecer.",
+      "answer_example": "We walked along the beach at sunset."
+    },
+    {
+      "id": "es-aprovechar",
+      "question_short": "aprovechar",
+      "answer_short": "to make the most of",
+      "part_of_speech": "verb",
+      "cefr_level": "B1",
+      "question_example": "Hay que aprovechar el buen tiempo.",
+      "answer_example": "We should make the most of the good weather."
+    },
+    {
+      "id": "es-carpeta",
+      "question_short": "la carpeta",
+      "answer_short": "folder",
+      "part_of_speech": "noun · feminine",
+      "cefr_level": "A1",
+      "question_example": "Guardé los papeles en la carpeta azul.",
+      "answer_example": "I kept the papers in the blue folder."
+    },
+    {
+      "id": "es-madrugar",
+      "question_short": "madrugar",
+      "answer_short": "to get up very early",
+      "part_of_speech": "verb",
+      "cefr_level": "B1",
+      "question_example": "No me gusta madrugar los domingos.",
+      "answer_example": "I don't like getting up early on Sundays."
+    },
+    {
+      "id": "es-vecindario",
+      "question_short": "el vecindario",
+      "answer_short": "neighbourhood",
+      "part_of_speech": "noun · masculine",
+      "cefr_level": "A2",
+      "question_example": "Todo el vecindario salió a la calle.",
+      "answer_example": "The whole neighbourhood came outside."
+    },
+    {
+      "id": "es-embarazada",
+      "question_short": "embarazada",
+      "answer_short": "pregnant",
+      "part_of_speech": "adjective",
+      "cefr_level": "A2",
+      "question_example": "Mi hermana está embarazada.",
+      "answer_example": "My sister is pregnant."
+    },
+    {
+      "id": "es-sobremesa",
+      "question_short": "la sobremesa",
+      "answer_short": "table talk after a meal",
+      "part_of_speech": "noun · feminine",
+      "cefr_level": "B2",
+      "question_example": "La sobremesa duró dos horas.",
+      "answer_example": "The after-lunch conversation lasted two hours."
+    },
+    {
+      "id": "es-sensible",
+      "question_short": "sensible",
+      "answer_short": "sensitive",
+      "part_of_speech": "adjective",
+      "cefr_level": "B1",
+      "question_example": "Es muy sensible a las críticas.",
+      "answer_example": "He is very sensitive to criticism."
+    },
+    {
+      "id": "es-amanecer",
+      "question_short": "el amanecer",
+      "answer_short": "dawn",
+      "part_of_speech": "noun · masculine",
+      "cefr_level": "A2",
+      "question_example": "Salimos antes del amanecer.",
+      "answer_example": "We left before dawn."
+    },
+    {
+      "id": "es-tardar",
+      "question_short": "tardar",
+      "answer_short": "to take time",
+      "part_of_speech": "verb",
+      "cefr_level": "A2",
+      "question_example": "El tren tardó media hora en llegar.",
+      "answer_example": "The train took half an hour to arrive."
+    },
+    {
+      "id": "es-lograr",
+      "question_short": "lograr",
+      "answer_short": "to manage to",
+      "part_of_speech": "verb",
+      "cefr_level": "B1",
+      "question_example": "Logró terminar el informe a tiempo.",
+      "answer_example": "She managed to finish the report on time."
+    },
+    {
+      "id": "es-actualmente",
+      "question_short": "actualmente",
+      "answer_short": "currently",
+      "part_of_speech": "adverb",
+      "cefr_level": "B1",
+      "question_example": "Actualmente vivo en Sevilla.",
+      "answer_example": "I currently live in Seville."
+    },
+    {
+      "id": "es-echar-de-menos",
+      "question_short": "echar de menos",
+      "answer_short": "to miss (someone)",
+      "part_of_speech": "phrase",
+      "cefr_level": "B1",
+      "question_example": "Echo de menos a mis abuelos.",
+      "answer_example": "I miss my grandparents."
+    },
+    {
+      "id": "es-la-huelga",
+      "question_short": "la huelga",
+      "answer_short": "strike",
+      "part_of_speech": "noun · feminine",
+      "cefr_level": "B2",
+      "question_example": "Los maquinistas están en huelga.",
+      "answer_example": "The train drivers are on strike."
+    },
+    {
+      "id": "es-el-bocadillo",
+      "question_short": "el bocadillo",
+      "answer_short": "sandwich",
+      "part_of_speech": "noun · masculine",
+      "cefr_level": "A1",
+      "question_example": "Me preparé un bocadillo de jamón.",
+      "answer_example": "I made myself a ham sandwich."
+    },
+    {
+      "id": "es-la-cuenta",
+      "question_short": "la cuenta",
+      "answer_short": "the bill",
+      "part_of_speech": "noun · feminine",
+      "cefr_level": "A1",
+      "question_example": "¿Nos trae la cuenta, por favor?",
+      "answer_example": "Could you bring us the bill, please?"
+    },
+    {
+      "id": "es-soler",
+      "question_short": "soler",
+      "answer_short": "to usually do",
+      "part_of_speech": "verb",
+      "cefr_level": "B1",
+      "question_example": "Suelo desayunar café con tostadas.",
+      "answer_example": "I usually have coffee and toast for breakfast."
+    },
+    {
+      "id": "es-el-atasco",
+      "question_short": "el atasco",
+      "answer_short": "traffic jam",
+      "part_of_speech": "noun · masculine",
+      "cefr_level": "A2",
+      "question_example": "Había un atasco enorme en la M-30.",
+      "answer_example": "There was a huge traffic jam on the M-30."
+    },
+    {
+      "id": "es-imprescindible",
+      "question_short": "imprescindible",
+      "answer_short": "essential",
+      "part_of_speech": "adjective",
+      "cefr_level": "B2",
+      "question_example": "El pasaporte es imprescindible para el viaje.",
+      "answer_example": "A passport is essential for the trip."
+    },
+    {
+      "id": "es-el-ocio",
+      "question_short": "el ocio",
+      "answer_short": "leisure",
+      "part_of_speech": "noun · masculine",
+      "cefr_level": "B2",
+      "question_example": "Dedica su tiempo de ocio a la pintura.",
+      "answer_example": "He spends his leisure time painting."
+    },
+    {
+      "id": "es-apenas",
+      "question_short": "apenas",
+      "answer_short": "barely",
+      "part_of_speech": "adverb",
+      "cefr_level": "B1",
+      "question_example": "Apenas dormí anoche.",
+      "answer_example": "I barely slept last night."
+    },
+    {
+      "id": "es-la-cerradura",
+      "question_short": "la cerradura",
+      "answer_short": "lock",
+      "part_of_speech": "noun · feminine",
+      "cefr_level": "B2",
+      "question_example": "La llave se quedó en la cerradura.",
+      "answer_example": "The key was left in the lock."
+    },
+    {
+      "id": "es-arrepentirse",
+      "question_short": "arrepentirse",
+      "answer_short": "to regret",
+      "part_of_speech": "verb",
+      "cefr_level": "C1",
+      "question_example": "No me arrepiento de nada.",
+      "answer_example": "I don't regret anything."
+    },
+    {
+      "id": "es-el-cariño",
+      "question_short": "el cariño",
+      "answer_short": "affection",
+      "part_of_speech": "noun · masculine",
+      "cefr_level": "B1",
+      "question_example": "Habla de su pueblo con mucho cariño.",
+      "answer_example": "He speaks about his village with great affection."
+    }
+  ]
+}

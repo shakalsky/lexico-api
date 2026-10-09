@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791394296066,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791449109327,
+      "tag": "0001_card_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791450350762,
+      "tag": "0002_deck_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791526214060,
+      "tag": "0003_drop_pos_and_cefr",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791527203667,
+      "tag": "0004_rename_term_to_question_short",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791527325332,
+      "tag": "0005_rename_translation_to_answer_short",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791527477699,
+      "tag": "0006_rename_example_source_to_question_example",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791527765307,
+      "tag": "0007_rename_example_target_to_answer_example",
+      "breakpoints": true
+    }
+  ]
+}

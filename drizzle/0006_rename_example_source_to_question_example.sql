@@ -1,0 +1,1 @@
+ALTER TABLE "words" RENAME COLUMN "example_source" TO "question_example";
