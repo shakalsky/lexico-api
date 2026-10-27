@@ -2,20 +2,36 @@
 
 Backend for Léxico, used by the Flutter app (`../lexico`) and the web app (`../lexico-web`).
 
-Fastify + TypeScript, Postgres via Drizzle ORM. Postgres runs in Docker for local development.
+Fastify + TypeScript, Postgres via Drizzle ORM. Postgres runs in Docker.
 
 ## First run
 
 Requires Node 22+ and Docker Desktop (running).
 
 ```sh
-cp .env.example .env
+cp .env.development.example .env.development
 npm install
 npm run db:up        # start Postgres in Docker
 npm run db:migrate   # create tables
 npm run db:seed      # load data/decks/*.json
 npm run dev          # http://localhost:3000
 ```
+
+## Environments
+
+`APP_ENV` picks the environment, and its settings come from `.env.<APP_ENV>`; variables
+already set in the shell win over the file. Without `APP_ENV` you get `development`.
+
+| `APP_ENV`               | Env file           | API port | Database                           |
+| ----------------------- | ------------------ | -------- | ---------------------------------- |
+| `development` (default) | `.env.development` | 3000     | `db-dev` container, port 5433      |
+| `staging`               | `.env.staging`     | 3001     | `db-staging` container, port 5432  |
+
+Copy each `.env.<env>.example` to `.env.<env>` to set it up. `npm run db:up` starts both
+databases. The plain scripts (`dev`, `start`, `db:migrate`, `db:seed`, `db:studio`) use
+development. For staging, run the API with `npm run staging` (reloads on change, like
+`dev`), and add `:staging` to the rest (`npm run start:staging`, `npm run db:migrate:staging`,
+…). Remember to run `db:migrate:staging` too after adding a migration.
 
 ## Endpoints
 
@@ -84,9 +100,10 @@ On the Android emulator use `http://10.0.2.2:3000` instead.
 | Script               | What it does                                   |
 | -------------------- | ---------------------------------------------- |
 | `npm run dev`        | Start the API with reload on change            |
+| `npm run staging`    | Same, against the staging environment          |
 | `npm run build`      | Compile to `dist/`                             |
 | `npm start`          | Run the compiled API                           |
 | `npm run typecheck`  | Type-check without emitting                    |
-| `npm run db:up`      | Start the Postgres container                   |
-| `npm run db:down`    | Stop it (data is kept in a Docker volume)      |
+| `npm run db:up`      | Start both Postgres containers                 |
+| `npm run db:down`    | Stop them (data is kept in Docker volumes)     |
 | `npm run db:seed`    | Upsert decks from `data/decks/`; safe to rerun |

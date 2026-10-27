@@ -10,7 +10,8 @@ local database may be reset at any time.
 
 ## Essentials
 
-- **Base URL:** `http://localhost:3000` in development (`PORT` in `.env`). There is no path
+- **Base URL:** `http://localhost:3000` in development and `http://localhost:3001` in staging
+  (`PORT` in `.env.<APP_ENV>`). There is no path
   prefix: no `/v1`.
 - **No authentication.** There are no users: every deck and word is visible to and writable by
   every caller.
@@ -330,8 +331,8 @@ A validation `message` names the first problem only, as a path into the body, e.
 `"body/words must NOT have fewer than 1 items"` or
 `"body/words/0 must have required property 'question_example'"`.
 
-**3. Unknown routes**, including unsupported methods such as `DELETE`:
-`404 { "message": "Route DELETE:/decks/x not found", "error": "Not Found", "statusCode": 404 }`.
+**3. Unknown routes**, including unsupported methods such as `PUT`:
+`404 { "message": "Route PUT:/decks/x not found", "error": "Not Found", "statusCode": 404 }`.
 
 To tell the shapes apart, check for `code` (request error), then `error` with no `statusCode`
 (API error).
@@ -340,7 +341,8 @@ To tell the shapes apart, check for `code` (request error), then `error` with no
 
 Calls for any of these get a `404` (no such route), so don't try them.
 
-- Renaming, editing or deleting decks or words: there are no `PUT`, `PATCH` or `DELETE` routes.
+- Renaming or editing decks: there is no `PUT` or `PATCH` route for decks. Words can be edited
+  with [`PATCH /words/:wordId`](#patch-wordswordid), and decks and words can be deleted.
 - Moving words between decks, or reordering them.
 - Resetting counters, or reading a history of reviews. Only the three totals are stored.
 - Pagination, filtering, search, or fetching a single deck or word by id.
@@ -363,7 +365,9 @@ Calls for any of these get a `404` (no such route), so don't try them.
 
 ## Local environment
 
-See `README.md` for setup. Commands that change data:
+See `README.md` for setup. There are two environments, `development` (default) and
+`staging`, each with its own database; the commands below target development, and their
+`:staging` variants (e.g. `npm run db:seed:staging`) target staging. Commands that change data:
 
 - `npm run db:migrate` applies migrations from `drizzle/`.
 - `npm run db:seed` loads `data/decks/*.json`. For each deck that has a file, it

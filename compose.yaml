@@ -1,19 +1,32 @@
+x-postgres: &postgres
+  image: postgres:18
+  environment:
+    POSTGRES_USER: lexico
+    POSTGRES_PASSWORD: lexico
+    POSTGRES_DB: lexico
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U lexico -d lexico"]
+    interval: 2s
+    timeout: 5s
+    retries: 15
+
 services:
-  db:
-    image: postgres:18
-    environment:
-      POSTGRES_USER: lexico
-      POSTGRES_PASSWORD: lexico
-      POSTGRES_DB: lexico
+  db-dev:
+    <<: *postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql
+
+  db-staging:
+    <<: *postgres
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lexico -d lexico"]
-      interval: 2s
-      timeout: 5s
-      retries: 15
+      - pgdata-staging:/var/lib/postgresql
 
 volumes:
-  pgdata:
+  pgdata-dev:
+  pgdata-staging:
+    # The original (pre-environments) database volume, kept so staging keeps its data.
+    name: lexico-api_pgdata

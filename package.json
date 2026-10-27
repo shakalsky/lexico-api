@@ -8,15 +8,20 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "staging": "APP_ENV=staging tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "start:staging": "APP_ENV=staging node dist/server.js",
     "typecheck": "tsc --noEmit",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:staging": "APP_ENV=staging drizzle-kit migrate",
     "db:seed": "tsx src/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:seed:staging": "APP_ENV=staging tsx src/db/seed.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:studio:staging": "APP_ENV=staging drizzle-kit studio"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
