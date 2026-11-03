@@ -57,6 +57,13 @@
       "when": 1791527765307,
       "tag": "0007_rename_example_target_to_answer_example",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793729901625,
+      "tag": "0008_users_and_sessions",
+      "breakpoints": true
     }
   ]
 }

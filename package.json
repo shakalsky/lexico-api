@@ -20,6 +20,8 @@
     "db:migrate:staging": "APP_ENV=staging drizzle-kit migrate",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:staging": "APP_ENV=staging tsx src/db/seed.ts",
+    "db:claim": "tsx src/db/claim.ts",
+    "db:claim:staging": "APP_ENV=staging tsx src/db/claim.ts",
     "db:studio": "drizzle-kit studio",
     "db:studio:staging": "APP_ENV=staging drizzle-kit studio"
   },

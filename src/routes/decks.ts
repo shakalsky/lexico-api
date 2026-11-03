@@ -5,14 +5,8 @@ import type { Db } from '../db/client.js';
 import { decks, words, type NewWord, type Word } from '../db/schema.js';
 import { toDeckDto } from './deck-dto.js';
 import { errorResponse } from './errors.js';
-import { toWordDto } from './word-dto.js';
+import { toWordDto, wordListSchema } from './word-dto.js';
 import { nonBlankString, quoteAll, wordFieldsSchema } from './word-input.js';
-
-const wordListSchema = {
-  type: 'object',
-  required: ['words'],
-  properties: { words: { type: 'array', items: { $ref: 'WordDto#' } } },
-} as const;
 
 const deckParamsSchema = {
   type: 'object',
@@ -37,6 +31,20 @@ interface NewDeckInput {
   id?: string;
   name: string;
   language: string;
+}
+
+const deckEditFields = { name: nonBlankString, language: nonBlankString } as const;
+
+/** Any of the editable fields; at least one. Omitted fields keep their value. */
+const deckEditSchema = {
+  type: 'object',
+  properties: deckEditFields,
+  anyOf: Object.keys(deckEditFields).map((field) => ({ required: [field] })),
+} as const;
+
+interface DeckEditInput {
+  name?: string;
+  language?: string;
 }
 
 /**
@@ -71,6 +79,11 @@ function findRepeated(values: string[]): string[] {
   return [...repeated];
 }
 
+/** The deck with this id, among the user's decks. */
+function ownDeck(userId: string, deckId: string) {
+  return and(eq(decks.userId, userId), eq(decks.id, deckId));
+}
+
 /** Thrown inside the insert transaction so that it rolls back. */
 class WordIdsTakenError extends Error {}
 
@@ -84,11 +97,11 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
       schema: {
         operationId: 'listDecks',
         tags: ['decks'],
-        summary: 'List all decks',
+        summary: 'List your decks',
         description: 'Oldest first (by `created_at`, ties broken by `id`). No pagination.',
         response: {
           200: {
-            description: 'Every deck.',
+            description: 'Every deck of the logged-in user.',
             type: 'object',
             required: ['decks'],
             properties: { decks: { type: 'array', items: { $ref: 'DeckDto#' } } },
@@ -96,8 +109,12 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
         },
       },
     },
-    async () => {
-      const rows = await db.select().from(decks).orderBy(asc(decks.createdAt), asc(decks.id));
+    async (request) => {
+      const rows = await db
+        .select()
+        .from(decks)
+        .where(eq(decks.userId, request.userId))
+        .orderBy(asc(decks.createdAt), asc(decks.id));
       return { decks: rows.map(toDeckDto) };
     },
   );
@@ -119,7 +136,7 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
             properties: { deck: { $ref: 'DeckDto#' } },
           },
           400: errorResponse('`FST_ERR_VALIDATION`: a field is missing, blank or of the wrong type.'),
-          409: errorResponse('`deck_id_taken`: a deck with this `id` already exists.'),
+          409: errorResponse('`deck_id_taken`: you already have a deck with this `id`.'),
         },
       },
     },
@@ -128,14 +145,58 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
 
       const [deck] = await db
         .insert(decks)
-        .values({ id, name, language })
-        .onConflictDoNothing({ target: decks.id })
+        .values({ userId: request.userId, id, name, language })
+        .onConflictDoNothing({ target: [decks.userId, decks.id] })
         .returning();
       if (!deck) {
         return reply.code(409).send({ error: 'deck_id_taken', message: `Deck "${id}" already exists.` });
       }
 
       return reply.code(201).send({ deck: toDeckDto(deck) });
+    },
+  );
+
+  app.patch<{ Params: { deckId: string }; Body: DeckEditInput }>(
+    '/decks/:deckId',
+    {
+      schema: {
+        operationId: 'editDeck',
+        tags: ['decks'],
+        summary: 'Edit a deck',
+        description:
+          'Changes the fields sent (`name`, `language`) and keeps the rest. Values are stored ' +
+          'as sent, not trimmed. The id, creation time and words can’t be changed.',
+        params: deckParamsSchema,
+        body: deckEditSchema,
+        response: {
+          200: {
+            description: 'Edited. `deck` has the new values.',
+            type: 'object',
+            required: ['deck'],
+            properties: { deck: { $ref: 'DeckDto#' } },
+          },
+          400: errorResponse(
+            '`FST_ERR_VALIDATION`: neither `name` nor `language` was sent, or a field is blank ' +
+              'or not a string.',
+          ),
+          404: deckNotFound,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { deckId } = request.params;
+      const { name, language } = request.body;
+
+      const [deck] = await db
+        .update(decks)
+        .set({ name, language })
+        .where(ownDeck(request.userId, deckId))
+        .returning();
+      if (!deck) {
+        return reply.code(404).send({ error: 'deck_not_found', message: `No deck "${deckId}".` });
+      }
+
+      return { deck: toDeckDto(deck) };
     },
   );
 
@@ -158,7 +219,10 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
     async (request, reply) => {
       const { deckId } = request.params;
 
-      const [deck] = await db.delete(decks).where(eq(decks.id, deckId)).returning({ id: decks.id });
+      const [deck] = await db
+        .delete(decks)
+        .where(ownDeck(request.userId, deckId))
+        .returning({ id: decks.id });
       if (!deck) {
         return reply.code(404).send({ error: 'deck_not_found', message: `No deck "${deckId}".` });
       }
@@ -188,7 +252,7 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
       const [deck] = await db
         .select({ id: decks.id })
         .from(decks)
-        .where(eq(decks.id, deckId))
+        .where(ownDeck(request.userId, deckId))
         .limit(1);
       if (!deck) {
         return reply.code(404).send({ error: 'deck_not_found', message: `No deck "${deckId}".` });
@@ -197,7 +261,7 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
       const rows = await db
         .select()
         .from(words)
-        .where(eq(words.deckId, deckId))
+        .where(and(eq(words.userId, request.userId), eq(words.deckId, deckId)))
         .orderBy(asc(words.position));
 
       return { words: rows.map(toWordDto) };
@@ -236,13 +300,14 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
           404: deckNotFound,
           409: errorResponse(
             '`question_examples_taken`: a `question_example` already belongs to a word in this ' +
-              'deck; or `word_ids_taken`: an `id` already belongs to a word, in any deck.',
+              'deck; or `word_ids_taken`: an `id` already belongs to one of your words, in any of your decks.',
           ),
         },
       },
     },
     async (request, reply) => {
       const { deckId } = request.params;
+      const { userId } = request;
       const input = request.body.words.map((word) => ({ ...word, id: word.id ?? randomUUID() }));
 
       const repeated = findRepeated(input.map((word) => word.id));
@@ -269,7 +334,7 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
           const [deck] = await tx
             .select({ id: decks.id })
             .from(decks)
-            .where(eq(decks.id, deckId))
+            .where(ownDeck(userId, deckId))
             .for('update');
           if (!deck) return null;
 
@@ -277,7 +342,13 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
           const taken = await tx
             .select({ questionExample: words.questionExample })
             .from(words)
-            .where(and(eq(words.deckId, deckId), inArray(words.questionExample, questionExamples)));
+            .where(
+              and(
+                eq(words.userId, userId),
+                eq(words.deckId, deckId),
+                inArray(words.questionExample, questionExamples),
+              ),
+            );
           if (taken.length > 0) {
             throw new QuestionExamplesTakenError(
               `Question examples already in this deck: ${quoteAll(taken.map((word) => word.questionExample))}.`,
@@ -287,10 +358,11 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
           const [last] = await tx
             .select({ position: max(words.position) })
             .from(words)
-            .where(eq(words.deckId, deckId));
+            .where(and(eq(words.userId, userId), eq(words.deckId, deckId)));
           const start = (last?.position ?? -1) + 1;
 
           const rows: NewWord[] = input.map((word, index) => ({
+            userId,
             id: word.id,
             deckId,
             position: start + index,
@@ -303,7 +375,7 @@ export const deckRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
           const inserted = await tx
             .insert(words)
             .values(rows)
-            .onConflictDoNothing({ target: words.id })
+            .onConflictDoNothing({ target: [words.userId, words.id] })
             .returning();
           if (inserted.length < rows.length) {
             const insertedIds = new Set(inserted.map((word) => word.id));

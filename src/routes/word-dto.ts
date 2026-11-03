@@ -32,6 +32,13 @@ export const wordDtoSchema = {
   },
 } as const;
 
+/** A `{ "words": [WordDto, …] }` response body. */
+export const wordListSchema = {
+  type: 'object',
+  required: ['words'],
+  properties: { words: { type: 'array', items: { $ref: 'WordDto#' } } },
+} as const;
+
 export function toWordDto(word: Word) {
   return {
     id: word.id,

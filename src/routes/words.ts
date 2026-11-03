@@ -1,9 +1,9 @@
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, ne, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import type { Db } from '../db/client.js';
 import { decks, words, type NewWord, type Word } from '../db/schema.js';
 import { errorResponse } from './errors.js';
-import { toWordDto } from './word-dto.js';
+import { toWordDto, wordListSchema } from './word-dto.js';
 import { quoteAll, wordFieldsSchema } from './word-input.js';
 
 const wordParamsSchema = {
@@ -26,6 +26,26 @@ interface WordEditInput {
   answer_short?: string | null;
   question_example?: string;
   answer_example?: string;
+}
+
+/** One answer to a card. */
+const reviewSchema = {
+  type: 'object',
+  required: ['word_id', 'correct'],
+  properties: {
+    word_id: { type: 'string', minLength: 1 },
+    correct: { type: 'boolean', description: 'true: answered right; false: answered wrong.' },
+  },
+} as const;
+
+interface ReviewInput {
+  word_id: string;
+  correct: boolean;
+}
+
+/** The word with this id, among the user's words. */
+function ownWord(userId: string, wordId: string) {
+  return and(eq(words.userId, userId), eq(words.id, wordId));
 }
 
 /** Thrown inside the edit transaction so that it rolls back. */
@@ -64,6 +84,7 @@ export const wordRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
     },
     async (request, reply) => {
       const { wordId } = request.params;
+      const { userId } = request;
       const body = request.body;
 
       const changes: Partial<NewWord> = {};
@@ -80,7 +101,7 @@ export const wordRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
             const [current] = await tx
               .select({ deckId: words.deckId })
               .from(words)
-              .where(eq(words.id, wordId));
+              .where(ownWord(userId, wordId));
             if (!current) return undefined;
 
             // Locking the deck row, as adding words does, stops a concurrent add or edit
@@ -88,7 +109,7 @@ export const wordRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
             await tx
               .select({ id: decks.id })
               .from(decks)
-              .where(eq(decks.id, current.deckId))
+              .where(and(eq(decks.userId, userId), eq(decks.id, current.deckId)))
               .for('update');
 
             const [taken] = await tx
@@ -96,6 +117,7 @@ export const wordRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
               .from(words)
               .where(
                 and(
+                  eq(words.userId, userId),
                   eq(words.deckId, current.deckId),
                   eq(words.questionExample, questionExample),
                   ne(words.id, wordId),
@@ -109,7 +131,11 @@ export const wordRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
             }
           }
 
-          const [word] = await tx.update(words).set(changes).where(eq(words.id, wordId)).returning();
+          const [word] = await tx
+            .update(words)
+            .set(changes)
+            .where(ownWord(userId, wordId))
+            .returning();
           return word;
         });
       } catch (error) {
@@ -143,7 +169,10 @@ export const wordRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
     async (request, reply) => {
       const { wordId } = request.params;
 
-      const [word] = await db.delete(words).where(eq(words.id, wordId)).returning({ id: words.id });
+      const [word] = await db
+        .delete(words)
+        .where(ownWord(request.userId, wordId))
+        .returning({ id: words.id });
       if (!word) {
         return reply.code(404).send({ error: 'word_not_found', message: `No word "${wordId}".` });
       }
@@ -152,54 +181,64 @@ export const wordRoutes: FastifyPluginAsync<{ db: Db }> = async (app, { db }) =>
     },
   );
 
-  // Records one answer to a card: counts it as shown, and as a success or a failure.
-  app.post<{ Params: { wordId: string }; Body: { correct: boolean } }>(
-    '/words/:wordId/reviews',
+  // Records a study session's answers: each counts the card as shown, and as a
+  // success or a failure. Words that no longer exist are skipped.
+  app.post<{ Body: { reviews: ReviewInput[] } }>(
+    '/reviews',
     {
       schema: {
-        operationId: 'recordReview',
+        operationId: 'recordReviews',
         tags: ['words'],
-        summary: 'Record one answer to a card',
+        summary: 'Record a session’s answers',
         description:
-          'Adds 1 to `shows_count`, and 1 to `successes_count` or `failures_count`. ' +
-          'Not idempotent: every call counts, including retries.',
-        params: wordParamsSchema,
+          'For each answer, adds 1 to the word’s `shows_count`, and 1 to `successes_count` or ' +
+          '`failures_count`. A word may appear more than once. Answers to word ids that don’t ' +
+          'exist, or belong to another user, are skipped. Not idempotent: every call counts, including retries.',
         body: {
           type: 'object',
-          required: ['correct'],
+          required: ['reviews'],
           properties: {
-            correct: { type: 'boolean', description: 'true: answered right; false: answered wrong.' },
+            reviews: { type: 'array', minItems: 1, maxItems: 1000, items: reviewSchema },
           },
         },
         response: {
           200: {
-            description: 'Counted. `word` has the new counts.',
-            type: 'object',
-            required: ['word'],
-            properties: { word: { $ref: 'WordDto#' } },
+            description:
+              'Counted. Each word that exists, once, in order of its first answer, with its new counts.',
+            ...wordListSchema,
           },
-          400: errorResponse('`FST_ERR_VALIDATION`: `correct` is missing or not a boolean.'),
-          404: wordNotFound,
+          400: errorResponse('`FST_ERR_VALIDATION`: the body doesn’t match the schema.'),
         },
       },
     },
-    async (request, reply) => {
-      const { wordId } = request.params;
-      const outcome = request.body.correct
-        ? { successesCount: sql`${words.successesCount} + 1` }
-        : { failuresCount: sql`${words.failuresCount} + 1` };
+    async (request) => {
+      const totals = new Map<string, { successes: number; failures: number }>();
+      for (const { word_id, correct } of request.body.reviews) {
+        const total = totals.get(word_id) ?? { successes: 0, failures: 0 };
+        if (correct) total.successes += 1;
+        else total.failures += 1;
+        totals.set(word_id, total);
+      }
+      const rows = [...totals].map(([word_id, total]) => ({ word_id, ...total }));
 
       // One statement, so concurrent answers to the same card are all counted.
-      const [word] = await db
+      const updated = await db
         .update(words)
-        .set({ showsCount: sql`${words.showsCount} + 1`, ...outcome })
-        .where(eq(words.id, wordId))
-        .returning();
-      if (!word) {
-        return reply.code(404).send({ error: 'word_not_found', message: `No word "${wordId}".` });
-      }
+        .set({
+          showsCount: sql`${words.showsCount} + r.successes + r.failures`,
+          successesCount: sql`${words.successesCount} + r.successes`,
+          failuresCount: sql`${words.failuresCount} + r.failures`,
+        })
+        .from(
+          sql`json_to_recordset(${JSON.stringify(rows)}::json) as r(word_id text, successes int, failures int)`,
+        )
+        .where(and(eq(words.userId, request.userId), sql`${words.id} = r.word_id`))
+        .returning(getTableColumns(words));
 
-      return { word: toWordDto(word) };
+      // Map keys keep insertion order, which is the order of each word's first answer.
+      const order = new Map([...totals.keys()].map((id, index) => [id, index]));
+      updated.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+      return { words: updated.map(toWordDto) };
     },
   );
 };

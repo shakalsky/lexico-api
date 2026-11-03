@@ -13,8 +13,10 @@ local database may be reset at any time.
 - **Base URL:** `http://localhost:3000` in development and `http://localhost:3001` in staging
   (`PORT` in `.env.<APP_ENV>`). There is no path
   prefix: no `/v1`.
-- **No authentication.** There are no users: every deck and word is visible to and writable by
-  every caller.
+- **Bearer-token authentication.** Every endpoint except `/health`, `POST /auth/register` and
+  `POST /auth/login` needs `Authorization: Bearer <token>`, and gets `401 unauthorized`
+  without a valid one. Each user only sees and changes their own decks and words. See
+  [Authentication](#authentication).
 - **JSON only.** Requests with a body must send `Content-Type: application/json`, or they get
   `415`. Bodies are limited to 1 MiB (`413`).
 - **Field names are `snake_case`** in requests and responses.
@@ -31,6 +33,18 @@ local database may be reset at any time.
 ## Data types
 
 ```ts
+interface UserDto {
+  id: string;          // UUID v4
+  email: string;       // lowercased
+  created_at: string;  // ISO 8601 in UTC with milliseconds
+}
+
+interface SessionResponse { // from register and login
+  user: UserDto;
+  token: string;       // send as `Authorization: Bearer <token>`
+  expires_at: string;  // ISO 8601 in UTC; the token stops working then
+}
+
 interface DeckDto {
   id: string;
   name: string;        // shown to the learner, e.g. "Food"
@@ -56,13 +70,15 @@ Every field is always present. Only `question_short` and `answer_short` can be `
 `question_example` where `question_short` would go and `answer_example` as its meaning.
 
 **Counters.** Every word starts with all three counters at `0`, and only
-[`POST /words/:wordId/reviews`](#post-wordswordidreviews) changes them. So
+[`POST /reviews`](#post-reviews) changes them. So
 `shows_count === successes_count + failures_count` always holds.
 
 **IDs.**
 
 - An `id` is any non-empty string. Ids the server generates are random UUID v4s.
-- **Word ids are unique across all decks**, not just within one. Deck ids are unique too.
+- **Ids are unique per user.** A user's deck ids are unique, and so are their word ids,
+  across all of their decks, not just within one. Two users can have a deck or word with the
+  same id; each only ever sees their own.
 - Ids can contain any character, including `/`, spaces and `ñ`. Always URL-encode an id
   in a path, e.g. with `encodeURIComponent`.
 
@@ -75,23 +91,105 @@ change the order of the others.
 | Method | Path                     | Success                   | Purpose                                 |
 | ------ | ------------------------ | ------------------------- | --------------------------------------- |
 | GET    | `/health`                | `200 { status }`          | Liveness, including the database        |
-| GET    | `/decks`                 | `200 { decks }`           | List all decks                          |
+| POST   | `/auth/register`         | `201 SessionResponse`     | Create an account and log in            |
+| POST   | `/auth/login`            | `200 SessionResponse`     | Log in                                  |
+| GET    | `/auth/me`               | `200 { user }`            | The logged-in user                      |
+| POST   | `/auth/logout`           | `204`, no body            | End this token's session                |
+| GET    | `/decks`                 | `200 { decks }`           | List your decks                         |
 | POST   | `/decks`                 | `201 { deck }`            | Create a deck                           |
+| PATCH  | `/decks/:deckId`         | `200 { deck }`            | Edit a deck's name or language          |
 | DELETE | `/decks/:deckId`         | `204`, no body            | Delete a deck and all its words         |
 | GET    | `/decks/:deckId/words`   | `200 { words }`           | All words in a deck, in order           |
 | POST   | `/decks/:deckId/words`   | `201 { words }`           | Append words to a deck (all or nothing) |
 | PATCH  | `/words/:wordId`         | `200 { word }`            | Edit a word's text fields               |
 | DELETE | `/words/:wordId`         | `204`, no body            | Delete a word                           |
-| POST   | `/words/:wordId/reviews` | `200 { word }`            | Record one answer to a card             |
+| POST   | `/reviews`               | `200 { words }`           | Record a study session's answers        |
+
+Every endpoint except `GET /health`, `POST /auth/register` and `POST /auth/login` needs a
+token, and can also return `401 { "error": "unauthorized", "message" }`; the status tables
+below leave that out. The `curl` examples expect the token in `$TOKEN`.
 
 ### GET /health
 
 Returns `200 { "status": "ok" }` after running a query against the database. If the database
-can't be reached, it returns `500 internal_error`.
+can't be reached, it returns `500 internal_error`. Needs no token.
+
+### Authentication
+
+Register or log in to get a `token`, then send it on every other call:
+
+```
+Authorization: Bearer <token>
+```
+
+- A token works for 30 days (`expires_at`), until `POST /auth/logout`, or until the account
+  is deleted. Then calls get `401 unauthorized`: log in again for a new token. Tokens are not
+  refreshed or extended.
+- Each register or login creates a separate session with its own token, so a user can be
+  logged in on several devices. Logging out ends only the session of the token sent.
+- Tokens are opaque random strings. Don't parse them. The server stores only a hash of each.
+- Emails are case-insensitive: they are lowercased before they are stored or compared.
+  Otherwise they are checked only loosely (`something@something.something`), and never
+  verified by sending mail.
+- Passwords are 8 to 256 characters, any characters. They are stored hashed (scrypt).
+
+### POST /auth/register
+
+Creates an account and logs it in. Needs no token.
+
+```ts
+interface CredentialsRequest { // same body for login
+  email: string;    // up to 254 characters
+  password: string; // 8 to 256 characters
+}
+```
+
+| Status | Body                                     | When                                          |
+| ------ | ---------------------------------------- | --------------------------------------------- |
+| `201`  | `SessionResponse`                        | Created and logged in                         |
+| `400`  | `FST_ERR_VALIDATION`                     | Not an email address, or password too short or too long |
+| `409`  | `{ "error": "email_taken", "message" }`  | An account with this email exists (any case)  |
+
+```sh
+curl -X POST localhost:3000/auth/register -H 'content-type: application/json' \
+  -d '{"email":"ana@example.com","password":"correct horse"}'
+```
+
+```json
+{
+  "user": { "id": "79a00ab1-40b9-4a48-a125-d18b1ccb99fe", "email": "ana@example.com", "created_at": "2026-11-03T18:27:21.915Z" },
+  "token": "opdka9jb4fIuKOc6qw1cplR91n-G8vvhsa6gWntUmRc",
+  "expires_at": "2026-12-03T18:27:21.919Z"
+}
+```
+
+### POST /auth/login
+
+Same body as register. Returns a new token; tokens from earlier logins keep working. Needs
+no token.
+
+| Status | Body                                             | When                    |
+| ------ | ------------------------------------------------ | ----------------------- |
+| `200`  | `SessionResponse`                                | Logged in               |
+| `400`  | `FST_ERR_VALIDATION`                             | Body doesn't match the schema |
+| `401`  | `{ "error": "invalid_credentials", "message" }`  | Wrong email or password |
+
+The response doesn't say whether the email exists: an unknown email and a wrong password
+both get `invalid_credentials`.
+
+### GET /auth/me
+
+Returns `200 { "user": UserDto }` for the token's account. Use it to check a stored token on
+app start: `401` means log in again.
+
+### POST /auth/logout
+
+Ends the session of the token sent, and returns `204` with no body. The token then gets
+`401`. Send no body and no `Content-Type`, as for [`DELETE /decks/:deckId`](#delete-decksdeckid).
 
 ### GET /decks
 
-Returns every deck, oldest first (by `created_at`, ties broken by `id`). There is no
+Returns every deck of the logged-in user, oldest first (by `created_at`, ties broken by `id`). There is no
 pagination. With no decks it returns `{ "decks": [] }`.
 
 ```json
@@ -120,7 +218,40 @@ interface CreateDeckRequest {
 | ------ | ------------------------------------------ | -------------------------- |
 | `201`  | `{ "deck": DeckDto }`                      | Created                    |
 | `400`  | `FST_ERR_VALIDATION`                       | Field missing, blank or wrong type |
-| `409`  | `{ "error": "deck_id_taken", "message" }`  | A deck with this `id` already exists |
+| `409`  | `{ "error": "deck_id_taken", "message" }`  | You already have a deck with this `id` |
+
+### PATCH /decks/:deckId
+
+Edits a deck's name, language, or both. Send only the fields to change; omitted fields keep
+their value.
+
+```ts
+interface EditDeckRequest { // at least one field
+  name?: string;            // must contain a non-whitespace character
+  language?: string;        // must contain a non-whitespace character
+}
+```
+
+Values are stored exactly as sent, not trimmed, as when creating a deck. Neither has to be
+unique, and sending a current value again is fine. Changing `language` only changes the
+label: the deck's words are not touched.
+
+The `id`, `created_at` and words can't be changed. Sending them has no effect, like any other
+unknown field, but a body with neither `name` nor `language` gets `400`.
+
+Rerunning `npm run db:seed` sets the name and language of a deck that has a file in
+`data/decks/` back to the values in that file.
+
+| Status | Body                                       | When                                |
+| ------ | ------------------------------------------ | ----------------------------------- |
+| `400`  | `FST_ERR_VALIDATION`                       | No editable field sent, or a field blank or not a string |
+| `404`  | `{ "error": "deck_not_found", "message" }` | You have no deck with this id       |
+| `200`  | `{ "deck": DeckDto }`                      | Edited; `deck` has the new values   |
+
+```sh
+curl -X PATCH localhost:3000/decks/es-food -H 'content-type: application/json' -H "authorization: Bearer $TOKEN" \
+  -d '{"name":"Food and drink"}'
+```
 
 ### DELETE /decks/:deckId
 
@@ -139,11 +270,11 @@ A request that is adding words to the deck at the same time finishes first, and 
 are deleted with the deck.
 
 ```sh
-curl -X DELETE localhost:3000/decks/es-food
+curl -X DELETE localhost:3000/decks/es-food -H "authorization: Bearer $TOKEN"
 ```
 
 ```sh
-curl -X POST localhost:3000/decks -H 'content-type: application/json' \
+curl -X POST localhost:3000/decks -H 'content-type: application/json' -H "authorization: Bearer $TOKEN" \
   -d '{"id":"es-food","name":"Food","language":"Español"}'
 ```
 
@@ -191,7 +322,7 @@ Checks run in this order, and the first failure is returned:
 | `400`  | `{ "error": "duplicate_question_examples", "message" }` | The same `question_example` appears twice in `words` |
 | `404`  | `{ "error": "deck_not_found", "message" }`     | No such deck                                            |
 | `409`  | `{ "error": "question_examples_taken", "message" }` | A `question_example` already belongs to a word in this deck |
-| `409`  | `{ "error": "word_ids_taken", "message" }`     | An `id` already belongs to a word, in any deck          |
+| `409`  | `{ "error": "word_ids_taken", "message" }`     | An `id` already belongs to one of your words, in any of your decks |
 | `201`  | `{ "words": WordDto[] }`                       | All words added                                         |
 
 The `message` for `duplicate_word_ids` and `word_ids_taken` lists the ids involved, e.g.
@@ -204,7 +335,8 @@ punctuation all count, so `"Hola."` and `"hola."` are different sentences. The s
 may appear in different decks.
 
 ```sh
-curl -X POST localhost:3000/decks/es-food/words -H 'content-type: application/json' -d '{
+curl -X POST localhost:3000/decks/es-food/words -H 'content-type: application/json' \
+  -H "authorization: Bearer $TOKEN" -d '{
   "words": [
     { "id": "es-pan", "question_short": "el pan", "answer_short": "bread",
       "question_example": "Compro pan cada mañana.", "answer_example": "I buy bread every morning." },
@@ -245,7 +377,7 @@ Checks run in this order, and the first failure is returned:
 | `200`  | `{ "word": WordDto }`                              | Edited; `word` has the new values                           |
 
 ```sh
-curl -X PATCH localhost:3000/words/es-pan -H 'content-type: application/json' \
+curl -X PATCH localhost:3000/words/es-pan -H 'content-type: application/json' -H "authorization: Bearer $TOKEN" \
   -d '{"answer_short":"bread, loaf"}'
 ```
 
@@ -262,39 +394,48 @@ Send no body and no `Content-Type`, as for [`DELETE /decks/:deckId`](#delete-dec
 | `404`  | `{ "error": "word_not_found", "message" }` | No word with this id |
 
 ```sh
-curl -X DELETE localhost:3000/words/es-pan
+curl -X DELETE localhost:3000/words/es-pan -H "authorization: Bearer $TOKEN"
 ```
 
-### POST /words/:wordId/reviews
+### POST /reviews
 
-Records one answer to a card. This is the only way the counters change, and there is no
-separate endpoint for counting a show.
+Records the answers from a study session, in one request. This is the only way the counters
+change, and there is no separate endpoint for counting a show. Words can come from any of
+your decks.
 
 ```ts
-interface ReviewRequest {
-  correct: boolean; // true: answered right; false: answered wrong
+interface RecordReviewsRequest {
+  reviews: {                // 1–1000 answers
+    word_id: string;        // non-empty
+    correct: boolean;       // true: answered right; false: answered wrong
+  }[];
 }
 ```
 
-Each call adds 1 to `shows_count`, and then 1 to `successes_count` if `correct` is `true`, or 1
-to `failures_count` if it is `false`. The update is a single database statement, so
+Each answer adds 1 to the word's `shows_count`, and then 1 to `successes_count` if `correct`
+is `true`, or 1 to `failures_count` if it is `false`. A word can appear more than once, e.g.
+a card missed and then shown again at the end of the session: every answer counts. All the
+answers are applied in a single database statement, so they are counted together, and
 concurrent calls are all counted.
 
-**This call is not idempotent.** Every call counts. Retrying after a timeout, when the first
-attempt may have reached the server, can count the same answer twice.
+**Answers to word ids you don't have are skipped**, without an error. A word deleted during
+the session would lose its counters anyway, so skipping it leaves the same result. To spot
+skipped ids, compare the response with the request.
 
-Send a real JSON boolean. The server also converts `"true"`, `"false"`, `1` and `0` to
+**This call is not idempotent.** Every call counts. Retrying after a timeout, when the first
+attempt may have reached the server, can count the same answers twice.
+
+Send real JSON booleans. The server also converts `"true"`, `"false"`, `1` and `0` to
 booleans, but don't rely on that.
 
-| Status | Body                                       | When                            |
-| ------ | ------------------------------------------ | ------------------------------- |
-| `200`  | `{ "word": WordDto }`                      | Counted; `word` has the new counts |
-| `400`  | `FST_ERR_VALIDATION`                       | `correct` missing or not boolean |
-| `404`  | `{ "error": "word_not_found", "message" }` | No word with this id            |
+| Status | Body                     | When                                                       |
+| ------ | ------------------------ | ---------------------------------------------------------- |
+| `200`  | `{ "words": [WordDto] }` | Counted; each word that exists, once, in order of its first answer, with its new counts |
+| `400`  | `FST_ERR_VALIDATION`     | `reviews` missing, empty or over 1000, or an answer missing `word_id` or `correct` |
 
 ```sh
-curl -X POST localhost:3000/words/es-pan/reviews -H 'content-type: application/json' \
-  -d '{"correct":true}'
+curl -X POST localhost:3000/reviews -H 'content-type: application/json' -H "authorization: Bearer $TOKEN" \
+  -d '{"reviews":[{"word_id":"es-pan","correct":true},{"word_id":"es-agua","correct":false}]}'
 ```
 
 ## Errors
@@ -306,8 +447,11 @@ to a developer.
 
 | `error`              | Status | Meaning                                       |
 | -------------------- | ------ | --------------------------------------------- |
-| `deck_not_found`     | `404`  | The `deckId` in the path doesn't exist        |
-| `word_not_found`     | `404`  | The `wordId` in the path doesn't exist        |
+| `unauthorized`       | `401`  | No `Authorization: Bearer` header, or the token is invalid, expired or logged out |
+| `invalid_credentials` | `401` | `POST /auth/login` with a wrong email or password |
+| `email_taken`        | `409`  | `POST /auth/register` with an email that has an account |
+| `deck_not_found`     | `404`  | You have no deck with the `deckId` in the path |
+| `word_not_found`     | `404`  | You have no word with the `wordId` in the path |
 | `deck_id_taken`      | `409`  | `POST /decks` with an `id` already in use     |
 | `word_ids_taken`     | `409`  | `POST /decks/:deckId/words` with ids already in use |
 | `duplicate_word_ids` | `400`  | The same id twice in one add-words request    |
@@ -341,14 +485,21 @@ To tell the shapes apart, check for `code` (request error), then `error` with no
 
 Calls for any of these get a `404` (no such route), so don't try them.
 
-- Renaming or editing decks: there is no `PUT` or `PATCH` route for decks. Words can be edited
-  with [`PATCH /words/:wordId`](#patch-wordswordid), and decks and words can be deleted.
+- Changing a deck's `id`. Only its name and language can be changed, with
+  [`PATCH /decks/:deckId`](#patch-decksdeckid).
 - Moving words between decks, or reordering them.
 - Resetting counters, or reading a history of reviews. Only the three totals are stored.
 - Pagination, filtering, search, or fetching a single deck or word by id.
-- Users, accounts or authentication.
+- Changing or resetting a password, changing the email, deleting an account, email
+  verification, or listing and ending other sessions.
+- Sharing decks between users, or seeing another user's data.
 
 ## Typical flows
+
+**Log in:**
+
+1. `POST /auth/register` the first time, `POST /auth/login` after that. Store the `token`.
+2. On app start, `GET /auth/me` with the stored token; on `401`, log in again.
 
 **Set up a deck:**
 
@@ -360,8 +511,8 @@ Calls for any of these get a `404` (no such route), so don't try them.
 1. `GET /decks` and let the learner pick a deck.
 2. `GET /decks/{id}/words`, then pick the cards to show using the counters,
    e.g. those with the most `failures_count` relative to `shows_count`.
-3. After each answer, `POST /words/{wordId}/reviews` with `{ "correct": … }`, and replace the
-   local copy of the word with the returned `word`.
+3. When the session ends, `POST /reviews` with every answer given, in one request, and
+   replace the local copies of the words with the returned `words`.
 
 ## Local environment
 
@@ -370,6 +521,11 @@ See `README.md` for setup. There are two environments, `development` (default) a
 `:staging` variants (e.g. `npm run db:seed:staging`) target staging. Commands that change data:
 
 - `npm run db:migrate` applies migrations from `drizzle/`.
-- `npm run db:seed` loads `data/decks/*.json`. For each deck that has a file, it
-  **deletes words that aren't in the file**, including words added through the API. Decks
-  without a file are not touched. Don't run it on data you want to keep.
+- `npm run db:seed -- <email>` loads `data/decks/*.json` into that account (register it
+  first). For each deck that has a file, it **deletes words that aren't in the file**,
+  including words added through the API. Decks without a file, and other users' decks, are
+  not touched. Don't run it on data you want to keep.
+- `npm run db:claim -- <email>` moves the decks created before accounts existed (owned by a
+  placeholder account, `legacy@lexico.invalid`, that can't log in) into that account, with
+  their words and counters. It stops without changing anything if the account already has a
+  deck or word with one of the same ids.
